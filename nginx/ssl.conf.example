@@ -1,0 +1,41 @@
+# ตัวอย่างบล็อก HTTPS สำหรับแทรกเข้า nginx.conf ภายใต้ `http { ... }`
+# หลังได้ใบรับรองจาก Let's Encrypt แล้ว (เช่น fullchain.pem + privkey.pem)
+# ตรวจสอบ path จริง: ls /etc/letsencrypt/live/api.loyalcloudcrm.com/
+#
+# แนวทางที่นิยม:
+# 1) รัน certbot จนได้ไฟล์ใน /etc/letsencrypt/... (ดู DEPLOYMENT_GUIDE.md)
+# 2) mount volume certbot-etc เข้า container nginx ให้ตรงกับ path ด้านล่าง
+# 3) เพิ่ม server { listen 443 ssl; ... } และ redirect HTTP → HTTPS
+
+# server {
+#     listen 443 ssl;
+#     listen [::]:443 ssl;
+#     http2 on;
+#     server_name api.loyalcloudcrm.com;
+#
+#     ssl_certificate     /etc/letsencrypt/live/api.loyalcloudcrm.com/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/api.loyalcloudcrm.com/privkey.pem;
+#     include /etc/letsencrypt/options-ssl-nginx.conf;
+#     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+#
+#     location / {
+#         proxy_pass http://loyalcloud_backend;
+#         proxy_http_version 1.1;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#         proxy_set_header Upgrade $http_upgrade;
+#         proxy_set_header Connection $connection_upgrade;
+#         proxy_read_timeout 86400s;
+#         proxy_send_timeout 86400s;
+#         proxy_buffering off;
+#     }
+# }
+#
+# server {
+#     listen 80;
+#     listen [::]:80;
+#     server_name api.loyalcloudcrm.com;
+#     return 301 https://$host$request_uri;
+# }

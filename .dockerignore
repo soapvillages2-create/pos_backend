@@ -1,0 +1,24 @@
+# Dependencies & build output
+node_modules
+npm-debug.log*
+
+# Secrets — ห้าม copy เข้า image (ใช้ env_file ตอนรันแทน)
+.env
+.env.*
+!.env.example
+!.env.production.example
+!.env.docker.example
+
+# Git & IDE
+.git
+.gitignore
+.cursor
+
+# Docs & tests (ลดขนาด context; ถ้าต้องการรวมใน image ให้ลบบรรทัดด้านล่าง)
+*.md
+docs/
+test-*.js
+
+# OS
+.DS_Store
+Thumbs.db
