@@ -1,0 +1,32 @@
+---
+description: กฎการจัดการ migration PostgreSQL บน VPS
+globs: migrations/*.sql
+alwaysApply: false
+---
+
+# Database Migrations
+
+## ลำดับ Migrations ที่รันแล้ว (ห้ามรันซ้ำโดยไม่มี IF NOT EXISTS)
+- 001: tenants, users
+- 002: province, country, agreed_to_terms_at
+- 003: products
+- 004: orders, order_items
+- 005: customers
+- 006: table_number บน orders
+- 007: password_hash ลูกค้า
+- 008: reset_password (users)
+- **009: QR VPS tables** (qr_pending_orders, qr_table_snapshots, qr_table_carts, qr_table_last_payment, qr_call_for_payment, qr_web_menu_config)
+
+## วิธีรัน Migration บน VPS
+```bash
+cd /root/pos_backend
+docker-compose exec -T db sh -c \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f -' \
+  < migrations/00X_xxx.sql
+docker-compose restart backend
+```
+
+## กฎการเขียน Migration ใหม่
+- ใช้ `IF NOT EXISTS` เสมอ (ป้องกันรันซ้ำ)
+- เพิ่มบรรทัดต่อท้ายใน `run_all.sql` ด้วย (เพื่อ fresh install ใหม่)
+- ตั้งชื่อ `00X_description.sql` เรียงลำดับ

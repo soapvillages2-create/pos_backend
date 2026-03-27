@@ -1,0 +1,41 @@
+---
+description: กฎ Flutter QR stream/polling — ห้าม revert main_scaffold subscribe เดิม
+globs: ..\..\posnew\pos_crm_app\lib\shared\widgets\main_scaffold.dart,..\..\posnew\pos_crm_app\lib\core\services\vps_qr_order_service.dart,..\..\posnew\pos_crm_app\lib\core\services\qr_order_service_provider.dart
+alwaysApply: false
+---
+
+# Flutter QR Stream — กฎห้ามแก้กลับ
+
+## ปัญหาที่เคยเกิด
+`qrOrderServiceProvider` สร้าง `VpsQrOrderService` ใหม่เมื่อ auth/settings เปลี่ยน
+→ ถ้า subscribe แค่ครั้งเดียวใน `initState` จะผูกกับ stream เก่าที่ closed แล้ว
+→ log `[QR-VPS] new order` ปรากฏ แต่ **ไม่มีเสียง/dialog**
+
+## วิธีที่ถูกต้อง (ห้ามเปลี่ยน)
+```dart
+// ✅ ใน build() ของ MainScaffold
+ref.listen<QrOrderService>(
+  qrOrderServiceProvider,
+  (previous, next) {
+    _qrSub?.cancel();
+    _qrSub = null;
+    _startQrListener();
+  },
+  fireImmediately: true,
+);
+```
+
+## ห้าม
+- ย้าย `_startQrListener()` กลับไปแค่ `initState` โดยไม่มี `ref.listen`
+- ลบ `fireImmediately: true`
+- subscribe stream ใน `initState` โดยตรง (ทำให้พลาด instance ใหม่)
+
+## menu_sync_helper.dart
+โหมด VPS ต้องการแค่ `shopId` — ไม่บังคับ `firebaseProjectId`/`firebaseApiKey`:
+```dart
+// ✅ VPS ไม่ต้องเช็ค Firebase
+if (!settings.qrOrderUseVps &&
+    (settings.firebaseProjectId.isEmpty || settings.firebaseApiKey.isEmpty)) {
+  return 'ยังไม่ได้ตั้งค่า Firebase / Shop ID';
+}
+```

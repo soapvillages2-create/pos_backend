@@ -1,0 +1,32 @@
+---
+description: กฎการทำงาน QR Order ผ่าน VPS (ห้าม revert กลับ Firestore)
+globs: routes/qr.js,routes/public.js,controllers/qrController.js,models/qrVps.js,migrations/009_qr_vps.sql
+alwaysApply: false
+---
+
+# QR Order — VPS Mode (ห้ามแก้กลับ Firestore)
+
+## Data Flow
+```
+ลูกค้า (web_menu) → POST /api/public/qr-order → qr_pending_orders (PostgreSQL)
+POS (Flutter)     → GET  /api/qr/pending-orders → poll ทุก 10 วินาที
+POS               → PATCH /api/qr/orders/:id/confirm → เปลี่ยน status
+```
+
+## Tables (Migration 009)
+- `qr_pending_orders` — คิวออเดอร์ลูกค้า (status: pending/confirmed/paid)
+- `qr_table_snapshots` — snapshot รายการโต๊ะ
+- `qr_table_carts` — ตะกร้าลูกค้า
+- `qr_table_last_payment` — เวลาชำระล่าสุด
+- `qr_call_for_payment` — เรียกเก็บเงิน
+- `qr_web_menu_config` — ตั้งค่าเมนูเว็บ (token, logo)
+
+## API สาธารณะ (ไม่ต้อง auth)
+- `GET  /api/public/products/:tenantId` → เมนูพร้อม `webMenu` config
+- `POST /api/public/qr-order` → body `{shopId, tableNo, items[], customerNote?}`
+- `POST /api/public/qr-call-for-payment` → body `{shopId, tableNo}`
+
+## ห้าม
+- อ่านเมนูจาก Firestore ในโหมด VPS (`useVps=true`)
+- ลบ `api=vps` query param จาก QR URL ที่แอปสร้าง
+- เปลี่ยน `/api/qr/*` ให้ไม่ตรวจ `tenantId === req.user.tenantId`

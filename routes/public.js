@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const pool = require('../config/db');
 const productModel = require('../models/product');
 const tenantModel = require('../models/tenant');
 const qrController = require('../controllers/qrController');
@@ -21,10 +22,23 @@ router.get('/products/:tenantId', async (req, res) => {
       limit: 200,
     });
 
+    let webMenu = null;
+    try {
+      const cfg = await pool.query(
+        `SELECT store_name, web_menu_logo_url, url_token, url_token_expiry
+         FROM qr_web_menu_config WHERE tenant_id = $1`,
+        [tenantId]
+      );
+      if (cfg.rows.length > 0) webMenu = cfg.rows[0];
+    } catch (e) {
+      if (e.code !== '42P01') console.warn('Public products webMenu:', e.message);
+    }
+
     res.json({
       success: true,
       data: {
         store: { name: tenant.name, tenantId: tenant.tenant_id },
+        webMenu,
         products,
       },
     });

@@ -1,0 +1,30 @@
+---
+description: กฎหน้าเว็บ web_menu — โหมด VPS ใช้ api=vps query param
+globs: ..\..\posnew\pos_crm_app\web_menu\index.html
+alwaysApply: false
+---
+
+# web_menu — VPS Mode
+
+## วิธีเปิดโหมด VPS
+URL ลูกค้าต้องมี `?api=vps` (หรือ `vps=1`):
+```
+https://lukmatcha.com/qrordering/?shop=SHOP_ID&table=1&api=vps
+```
+QR URL สร้างโดยแอป (tables_management_page.dart) ใส่ `&api=vps` ให้อัตโนมัติเมื่อ `qrOrderUseVps=true`
+
+## โหมด VPS — Flow
+1. `initVps()` → `GET ${vpsBase}/api/public/products/${shopId}` → โหลดเมนูจาก PostgreSQL
+2. ลูกค้าสั่ง → `submitOrderVps()` → `POST .../api/public/qr-order`
+3. ลูกค้าเรียกเก็บเงิน → `callForPaymentVps()` → `POST .../api/public/qr-call-for-payment`
+
+## โหมด Firebase (เดิม)
+ยังใช้งานได้ถ้าไม่มี `api=vps` — อ่านจาก Firestore `menu_items`, ส่งไป `customer_orders`
+
+## ห้าม
+- ลบ `if (useVps) { await initVps(); return; }` ใน `init()`
+- ให้โหมด VPS ยิง Firestore โดยตรง
+- ลบ `submitOrderVps` / `callForPaymentVps` functions
+
+## Deploy
+แก้ไฟล์นี้แล้วต้อง **upload ไฟล์ขึ้น host จริง** — แก้แต่ใน Git ไม่พอ

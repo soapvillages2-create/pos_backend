@@ -1,0 +1,26 @@
+---
+description: โครงสร้างโปรเจ็กต์และแนวทางหลัก — ให้อ่านก่อนแก้ไขไฟล์ใดก็ตาม
+alwaysApply: true
+---
+
+# Loyalcloud POS — Project Architecture
+
+## Repos & Roles
+| Repo | Path | หน้าที่ |
+|------|------|---------|
+| pos_backend | `/root/pos_backend` บน VPS | Node/Express API + PostgreSQL (Docker) |
+| pos_crm_app | `C:\...\posnew\pos_crm_app` | Flutter Windows POS + web_menu |
+
+## Stack
+- **Backend**: Node.js, Express, PostgreSQL 16, Docker Compose, Nginx reverse proxy
+- **App**: Flutter (Windows/Web), Riverpod, Drift SQLite, audioplayers
+- **API Base**: `https://api.loyalcloudcrm.com` (ไม่ใส่ port — ผ่าน Nginx)
+
+## การ Deploy
+- **backend**: `git pull` → `docker-compose build backend` → `docker-compose up -d`
+- **Migration**: `docker-compose exec -T db sh -c 'psql ... -f -' < migrations/XXX.sql`
+- **env**: `.env` ไม่ commit — อยู่บน VPS เท่านั้น
+
+## Auth
+- JWT (Bearer) สำหรับทุก `/api/qr/*` และ `/api/*` ที่ต้อง login
+- Public (ไม่ต้อง auth): `/api/public/*`, `/api/status`
