@@ -171,3 +171,6 @@ CREATE TABLE IF NOT EXISTS qr_web_menu_config (
   url_token_expiry TIMESTAMP WITH TIME ZONE,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 010: หมายเหตุรายการออเดอร์ (บรรทัดแบบไม่ผูก product ในแคตตาล็อก)
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS note TEXT;
