@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const tenantModel = require('../models/tenant');
@@ -7,6 +6,11 @@ const customerModel = require('../models/customer');
 const { sendResetPasswordEmail } = require('../services/emailService');
 
 const RESET_TOKEN_TTL_MINUTES = 15;
+
+/** รหัส OTP 6 หลัก (100000–999999) สำหรับรีเซ็ตรหัสผ่าน */
+function generateResetPasswordOtp() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
 
 function isValidEmailFormat(email) {
   if (!email || typeof email !== 'string') return false;
@@ -323,7 +327,7 @@ async function loginMember(req, res) {
 
 /** ข้อความตอบกลับแบบเดียวกันเสมอ — ป้องกันการเดาอีเมลในระบบ */
 const FORGOT_PASSWORD_GENERIC_MESSAGE =
-  'หากอีเมลถูกต้องและมีบัญชีในระบบ คุณจะได้รับลิงก์รีเซ็ตรหัสผ่านทางอีเมล';
+  'หากอีเมลถูกต้องและมีบัญชีในระบบ คุณจะได้รับรหัสยืนยันการรีเซ็ตรหัสผ่านทางอีเมล';
 
 async function forgotPassword(req, res) {
   try {
@@ -351,13 +355,13 @@ async function forgotPassword(req, res) {
       });
     }
 
-    const resetToken = crypto.randomBytes(32).toString('hex');
+    const otpCode = generateResetPasswordOtp();
     const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000);
 
-    await userModel.setResetPasswordToken(user.id, resetToken, expiresAt);
+    await userModel.setResetPasswordToken(user.id, otpCode, expiresAt);
 
     try {
-      await sendResetPasswordEmail(user.email, resetToken);
+      await sendResetPasswordEmail(user.email, otpCode);
     } catch (mailErr) {
       console.error('forgotPassword send email error:', mailErr?.message || mailErr);
       if (mailErr?.response) console.error('SMTP response:', mailErr.response);
@@ -384,7 +388,8 @@ async function resetPassword(req, res) {
   try {
     const { email, token, newPassword } = req.body || {};
     const emailTrim = typeof email === 'string' ? email.trim() : '';
-    const tokenTrim = typeof token === 'string' ? token.trim() : '';
+    const tokenTrim =
+      token == null ? '' : String(token).trim().replace(/\s/g, '');
     const pwd = typeof newPassword === 'string' ? newPassword : '';
 
     if (!emailTrim || !tokenTrim || !pwd) {
@@ -406,11 +411,14 @@ async function resetPassword(req, res) {
       });
     }
 
-    const user = await userModel.findUserByEmailAndValidResetToken(emailTrim, tokenTrim);
+    const user = await userModel.findUserByEmailAndValidResetToken(
+      emailTrim,
+      tokenTrim
+    );
     if (!user) {
       return res.status(400).json({
         success: false,
-        message: 'โค้ดไม่ถูกต้องหรือหมดอายุ กรุณาขอรีเซ็ตรหัสผ่านใหม่',
+        message: 'โค้ดไม่ถูกต้องหรือหมดอายุ',
       });
     }
 
