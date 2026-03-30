@@ -1,16 +1,31 @@
 const orderModel = require('../models/order');
 
+/**
+ * POST /api/orders — tenantId ใน body (ถ้ามี) คือ shop/tenant ของร้านที่ POS อ้างอิง (ควรตรงกับ JWT ตอน login ร้าน);
+ * ฝั่ง API ใช้ tenantId จาก Bearer token เป็นหลักเท่านั้น ไม่ได้อ่าน body.tenantId ไปบันทึกออเดอร์ — ถ้าอนาคตบังคับให้ body ตรง token ให้ยืนยันกับทีม POS ว่าส่งค่าตรงกัน
+ */
 async function create(req, res) {
   try {
     const tenantId = req.user.tenantId;
     const userId = req.user.userId;
-    const { items, customerId, notes, tableNumber } = req.body;
+    const {
+      items,
+      customerId,
+      notes,
+      note,
+      tableNumber,
+      tableNo,
+      orderNumber,
+      status,
+    } = req.body;
 
     const order = await orderModel.create(tenantId, userId, {
       items: items || [],
       customerId,
-      notes,
-      tableNumber,
+      notes: notes ?? note,
+      tableNumber: tableNumber ?? tableNo,
+      orderNumber,
+      status,
     });
 
     res.status(201).json({
@@ -20,7 +35,13 @@ async function create(req, res) {
     });
   } catch (err) {
     console.error('Order create error:', err);
-    const status = err.message.includes('ไม่พบ') ? 404 : 400;
+    if (err.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        message: 'เลขออเดอร์ซ้ำ (orderNumber ถูกใช้แล้วใน tenant นี้)',
+      });
+    }
+    const status = err.statusCode || 400;
     res.status(status).json({
       success: false,
       message: err.message || 'เกิดข้อผิดพลาด',
