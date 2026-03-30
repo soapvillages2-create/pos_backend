@@ -438,6 +438,82 @@ async function resetPassword(req, res) {
   }
 }
 
+/**
+ * POST /api/auth/delete-account — ปิดบัญชีร้านถาวร (เฉพาะ admin / เจ้าของร้าน)
+ * Body: { password, confirmation: "DELETE" }
+ */
+async function deleteAccount(req, res) {
+  try {
+    const { password, confirmation } = req.body || {};
+    const pwd = typeof password === 'string' ? password : '';
+    const conf =
+      confirmation == null ? '' : String(confirmation).trim();
+
+    if (!pwd) {
+      return res.status(400).json({
+        success: false,
+        message: 'กรุณากรอกรหัสผ่าน',
+      });
+    }
+    if (conf !== 'DELETE') {
+      return res.status(400).json({
+        success: false,
+        message: 'กรุณายืนยันโดยพิมพ์ DELETE',
+      });
+    }
+
+    const tokenUser = req.user;
+    const user = await userModel.getUserByIdWithPassword(tokenUser.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'ไม่พบผู้ใช้',
+      });
+    }
+
+    if (user.tenant_id !== tokenUser.tenantId) {
+      return res.status(403).json({
+        success: false,
+        message: 'ไม่มีสิทธิ์ลบบัญชีร้าน',
+      });
+    }
+
+    if (user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'ไม่มีสิทธิ์ลบบัญชีร้าน (เฉพาะเจ้าของร้านเท่านั้น)',
+      });
+    }
+
+    const isMatch = await bcrypt.compare(pwd, user.password_hash);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'รหัสผ่านไม่ถูกต้อง',
+      });
+    }
+
+    const deleted = await tenantModel.deleteTenantByTenantId(user.tenant_id);
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: 'ไม่พบข้อมูลร้าน',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'บัญชีร้านถูกลบแล้ว',
+    });
+  } catch (err) {
+    console.error('deleteAccount error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'เกิดข้อผิดพลาด ไม่สามารถลบบัญชีได้',
+    });
+  }
+}
+
 module.exports = {
   register,
   registerMember,
@@ -446,4 +522,5 @@ module.exports = {
   me,
   forgotPassword,
   resetPassword,
+  deleteAccount,
 };

@@ -33,8 +33,34 @@ async function isTenantIdExists(tenantId) {
   return result.rows.length > 0;
 }
 
+/**
+ * ลบร้าน (tenant) — แถวลูกที่ FK ไป tenants แบบ ON DELETE CASCADE จะถูกลบตาม
+ */
+async function deleteTenantByTenantId(tenantId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      'DELETE FROM tenants WHERE tenant_id = $1 RETURNING tenant_id',
+      [tenantId]
+    );
+    if (result.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+    await client.query('COMMIT');
+    return true;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   createTenant,
   getTenantByTenantId,
   isTenantIdExists,
+  deleteTenantByTenantId,
 };

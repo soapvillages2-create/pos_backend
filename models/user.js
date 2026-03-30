@@ -26,6 +26,12 @@ async function getUserById(id) {
   return result.rows[0];
 }
 
+/** แถว users ครบ รวม password_hash — ใช้เฉพาะ flow ที่ต้องตรวจรหัส (เช่น ลบบัญชี) */
+async function getUserByIdWithPassword(id) {
+  const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+  return result.rows[0];
+}
+
 /** บันทึก token รีเซ็ตรหัสผ่าน + เวลาหมดอายุ */
 async function setResetPasswordToken(userId, token, expiresAt) {
   const result = await pool.query(
@@ -69,6 +75,7 @@ module.exports = {
   createUser,
   getUserByEmail,
   getUserById,
+  getUserByIdWithPassword,
   setResetPasswordToken,
   findUserByEmailAndValidResetToken,
   updatePasswordAndClearResetToken,

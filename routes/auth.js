@@ -9,6 +9,7 @@ router.post('/login-member', authController.loginMember);
 router.post('/login', authController.login);
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);
+router.post('/delete-account', authMiddleware, authController.deleteAccount);
 router.get('/me', authMiddleware, authController.me);
 
 module.exports = router;
