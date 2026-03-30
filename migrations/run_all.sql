@@ -174,3 +174,11 @@ CREATE TABLE IF NOT EXISTS qr_web_menu_config (
 
 -- 010: หมายเหตุรายการออเดอร์ (บรรทัดแบบไม่ผูก product ในแคตตาล็อก)
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS note TEXT;
+
+-- 011: POS catalog snapshot (GET /api/pos/catalog)
+CREATE TABLE IF NOT EXISTS pos_catalog_snapshots (
+  tenant_id VARCHAR(20) PRIMARY KEY REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+  version INT NOT NULL DEFAULT 1,
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb
+);
