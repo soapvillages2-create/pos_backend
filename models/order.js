@@ -18,6 +18,20 @@ function hasCatalogProductId(item) {
   return str.length > 0;
 }
 
+/** ชื่อสินค้าจาก POS — รองรับทั้ง camelCase และ snake_case */
+function itemDisplayName(item) {
+  const raw =
+    item.productName ?? item.name ?? item.product_name ?? '';
+  return String(raw).trim();
+}
+
+const PRODUCT_NAME_MAX = 255;
+
+function truncateProductName(s) {
+  if (s.length <= PRODUCT_NAME_MAX) return s;
+  return s.slice(0, PRODUCT_NAME_MAX);
+}
+
 async function getNextOrderNumber(tenantId) {
   const result = await pool.query(
     `SELECT order_number FROM orders 
@@ -34,26 +48,56 @@ async function getNextOrderNumber(tenantId) {
   return 'ORD-' + num.toString().padStart(6, '0');
 }
 
+const ORDER_STATUSES = [
+  'pending',
+  'completed',
+  'cancelled',
+  'paid',
+];
+
 /**
  * สร้างออเดอร์
  *
  * รายการสินค้า (items) รองรับ 2 แบบ:
- * 1) ผูกแคตตาล็อก: { productId: UUID, quantity|qty }
- * 2) ไม่ผูกแคตตาล็อก (เช่น POS ใช้ ID ในเครื่องที่ไม่ตรง DB): { productName, unitPrice, qty|quantity, totalPrice?, note? }
- *    — ไม่ส่ง productId หรือส่งเป็นค่าว่าง
+ * 1) ผูกแคตตาล็อก: { productId: UUID, quantity|qty } — ถ้า UUID ไม่มีใน DB จะบันทึกเป็นบรรทัดฟรีเท็กซ์จาก request
+ * 2) ไม่ผูกแคตตาล็อก: { productName|name|product_name, unitPrice, qty|quantity, totalPrice?, note? }
  */
 async function create(tenantId, userId, data) {
-  const { items, customerId, notes, tableNumber } = data;
+  const {
+    items,
+    customerId,
+    notes,
+    tableNumber,
+    orderNumber: clientOrderNumber,
+    status: clientStatus,
+  } = data;
   if (!items || !Array.isArray(items) || items.length === 0) {
     throw new Error('กรุณาระบุรายการสินค้า');
   }
 
   if (customerId) {
     const customer = await customerModel.findById(customerId, tenantId);
-    if (!customer) throw new Error('ไม่พบลูกค้า');
+    if (!customer) {
+      const err = new Error('ไม่พบลูกค้า');
+      err.statusCode = 404;
+      throw err;
+    }
   }
 
-  const orderNumber = await getNextOrderNumber(tenantId);
+  const rawOrderNum =
+    clientOrderNumber != null ? String(clientOrderNumber).trim() : '';
+  let orderNumber;
+  if (rawOrderNum) {
+    orderNumber = rawOrderNum.slice(0, 50);
+  } else {
+    orderNumber = await getNextOrderNumber(tenantId);
+  }
+
+  const normalizedStatus =
+    typeof clientStatus === 'string' ? clientStatus.trim().toLowerCase() : '';
+  const orderStatus = ORDER_STATUSES.includes(normalizedStatus)
+    ? normalizedStatus
+    : 'pending';
   const client = await pool.connect();
 
   try {
@@ -63,6 +107,9 @@ async function create(tenantId, userId, data) {
     const orderItems = [];
 
     for (const item of items) {
+      if (item == null || typeof item !== 'object') {
+        continue;
+      }
       const note = item.note != null ? String(item.note) : null;
       let catalogProductId = null;
       let catalogName = null;
@@ -87,13 +134,13 @@ async function create(tenantId, userId, data) {
         // ถ้าไม่พบในแคตตาล็อก → ใช้ชื่อ/ราคาจาก request ด้านล่าง
       }
 
-      const productName = catalogName
-        ?? String(item.productName ?? item.name ?? '').trim();
-      if (!productName) {
+      const productNameRaw = catalogName ?? itemDisplayName(item);
+      if (!productNameRaw) {
         throw new Error(
-          'รายการที่ไม่มี productId ต้องมี productName (หรือ name)'
+          'แต่ละรายการสินค้าต้องมี productName (หรือ name / product_name)'
         );
       }
+      const productName = truncateProductName(productNameRaw);
 
       const qty = parseInt(item.quantity ?? item.qty, 10) || 1;
       if (qty < 1) {
@@ -104,7 +151,7 @@ async function create(tenantId, userId, data) {
         ?? parseFloat(item.unitPrice ?? item.unit_price ?? NaN);
       if (Number.isNaN(unitPrice) || unitPrice < 0) {
         throw new Error(
-          'รายการที่ไม่มี productId ต้องมี unitPrice (หรือ unit_price) ที่ถูกต้อง'
+          'แต่ละรายการสินค้าต้องมี unitPrice (หรือ unit_price) ที่ถูกต้อง'
         );
       }
 
@@ -128,18 +175,21 @@ async function create(tenantId, userId, data) {
     }
 
     if (orderItems.length === 0) {
-      throw new Error('ไม่พบรายการสินค้าที่ถูกต้อง');
+      throw new Error(
+        'ไม่มีรายการสินค้าที่ใช้ได้ (ตรวจสอบ items ว่าเป็น object ที่มีชื่อและราคา)'
+      );
     }
 
     const orderResult = await client.query(
       `INSERT INTO orders (tenant_id, order_number, customer_id, total_amount, status, notes, table_number, created_by)
-       VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
       [
         tenantId,
         orderNumber,
         customerId || null,
         totalAmount,
+        orderStatus,
         notes || null,
         tableNumber || null,
         userId || null,
@@ -215,7 +265,7 @@ async function findById(id, tenantId) {
 }
 
 async function updateStatus(id, tenantId, status) {
-  const valid = ['pending', 'completed', 'cancelled'];
+  const valid = ['pending', 'completed', 'cancelled', 'paid'];
   if (!valid.includes(status)) {
     throw new Error('สถานะไม่ถูกต้อง');
   }
