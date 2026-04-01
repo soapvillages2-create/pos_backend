@@ -82,15 +82,21 @@ async function remove(id, tenantId) {
 
 /**
  * Sync เมนูจากแอป (QR) — จับคู่ด้วย sync_key = id จาก SQLite ฝั่งแอป
+ * @param {object} [options]
+ * @param {boolean} [options.fullSync] — ถ้า true หลัง upsert จะปิด (is_active=false) รายการที่มี sync_key ไม่อยู่ใน payload
+ *        เพื่อให้เมนูบน VPS ตรงกับ POS ทั้งชุด (ไม่ค้างรายการเก่า)
  */
-async function upsertFromQrMenuSync(tenantId, products) {
+async function upsertFromQrMenuSync(tenantId, products, options = {}) {
   if (!Array.isArray(products) || products.length === 0) return;
+  const fullSync = options.fullSync === true;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const syncedKeys = [];
     for (const p of products) {
       const syncKey = String(p.id ?? p.syncKey ?? '');
       if (!syncKey) continue;
+      syncedKeys.push(syncKey);
       const name = String(p.name || '').trim() || 'ไม่มีชื่อ';
       const price = parseFloat(p.price) || 0;
       const category =
@@ -146,6 +152,18 @@ async function upsertFromQrMenuSync(tenantId, products) {
         isActive,
         menuExtrasJson,
       });
+    }
+    if (fullSync && syncedKeys.length > 0) {
+      await client.query(
+        `UPDATE qr_menu_products SET is_active = false, updated_at = CURRENT_TIMESTAMP
+         WHERE tenant_id = $1 AND NOT (sync_key = ANY($2::text[]))`,
+        [tenantId, syncedKeys]
+      );
+      await client.query(
+        `UPDATE products SET is_active = false, updated_at = CURRENT_TIMESTAMP
+         WHERE tenant_id = $1 AND sync_key IS NOT NULL AND NOT (sync_key = ANY($2::text[]))`,
+        [tenantId, syncedKeys]
+      );
     }
     await client.query('COMMIT');
   } catch (err) {

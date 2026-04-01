@@ -27,6 +27,10 @@ Migration: `migrations/012_qr_menu_products.sql`
 
 **หลังทำครบ:** `GET /api/public/products/{tenantId}` จะอ่านจากตารางที่ **`sync-menu` เขียนลง** (`qr_menu_products`) → เมนูบนมือถือลูกค้าจะตรงกับร้านนั้น (สิ่งที่ POS ซิงค์ขึ้น) ไม่ปนกับ catalog หลักใน `products` แบบเดิม
 
+### ซิงค์แบบล้างรายการเก่า (`fullSync`)
+
+`POST /api/qr/sync-menu` รับ **`fullSync: true`** ใน body — เมื่อส่ง **เมนูครบชุด** จาก POS จะปิด (is_active=false) รายการที่ไม่อยู่ใน payload เพื่อไม่ให้เมนูเก่าค้างบน VPS ดูรายละเอียดใน [`QR_SYNC_MENU_SHOPID.md`](QR_SYNC_MENU_SHOPID.md) ส่วน `fullSync`
+
 **วิธีทำแบบละเอียด (ทีละขั้น, คำสั่งครบ, ทดสอบ):** [`DEPLOY_VPS.md#runbook-012`](DEPLOY_VPS.md#runbook-012)
 
 ## แก้กรณี `curl` บอกไม่พบร้าน แต่ `docker exec ... node` query เจอร้าน

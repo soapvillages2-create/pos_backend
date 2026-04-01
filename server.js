@@ -28,7 +28,9 @@ if (corsAllowed.length > 0) {
 } else {
   app.use(cors());
 }
-app.use(express.json());
+// เพิ่ม limit เป็น 10MB เพื่อรองรับ sync-menu ที่มี web_menu_logo_url เป็น base64
+// TODO: ระยะยาวควรให้แอปส่ง URL รูปภาพแทน base64 เพื่อลด payload
+app.use(express.json({ limit: '10mb' }));
 
 // Health Check API
 app.get('/api/status', (req, res) => {

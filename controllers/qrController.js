@@ -1,6 +1,7 @@
 const qrVps = require('../models/qrVps');
 const tenantModel = require('../models/tenant');
 const productModel = require('../models/product');
+const qrMenuProductModel = require('../models/qrMenuProduct');
 const pool = require('../config/db');
 
 const TENANT_ROOM_PREFIX = 'tenant:';
@@ -67,6 +68,7 @@ async function getPendingOrders(req, res) {
       return res.status(403).json({ success: false, message: 'ไม่ตรงกับร้านที่ล็อกอิน' });
     }
     const rows = await qrVps.listPendingOrders(shopId);
+    console.log(`[pending-orders] shop=${shopId} count=${rows.length}`);
     res.json(rows.map(mapPendingRow));
   } catch (err) {
     console.error('qr pending-orders:', err);
@@ -82,6 +84,7 @@ async function confirmOrder(req, res) {
       return res.status(404).json({ success: false, message: 'ไม่พบออเดอร์' });
     }
     const updated = await qrVps.updatePendingStatus(orderId, req.user.tenantId, 'confirmed');
+    console.log(`[confirm-order] shop=${req.user.tenantId} orderId=${orderId} table=${row.table_no}`);
     res.json({ success: true, data: updated });
   } catch (err) {
     console.error('qr confirm:', err);
@@ -95,12 +98,12 @@ async function pushOrder(req, res) {
     if (!requireShopMatch(req, shopId)) {
       return res.status(403).json({ success: false, message: 'ไม่ตรงกับร้านที่ล็อกอิน' });
     }
-    const st = (status || 'confirmed').toLowerCase();
+    const st = (status || 'pending').toLowerCase();
     const row = await qrVps.createPendingOrder(shopId, {
       tableNo,
       items,
       customerNote,
-      status: ['pending', 'confirmed', 'paid'].includes(st) ? st : 'confirmed',
+      status: ['pending', 'confirmed', 'paid'].includes(st) ? st : 'pending',
     });
     res.status(201).json({ success: true, data: mapPendingRow(row) });
   } catch (err) {
@@ -168,7 +171,15 @@ async function deleteTableSnapshot(req, res) {
 
 async function syncMenu(req, res) {
   try {
-    const { shopId, storeName, webMenuLogoUrl, urlToken, urlTokenExpiry, products } = req.body || {};
+    const {
+      shopId,
+      storeName,
+      webMenuLogoUrl,
+      urlToken,
+      urlTokenExpiry,
+      products,
+      fullSync,
+    } = req.body || {};
     const sid = shopId != null ? String(shopId).trim() : '';
     if (!sid) {
       return res.status(400).json({
@@ -202,7 +213,9 @@ async function syncMenu(req, res) {
     });
 
     if (Array.isArray(products) && products.length > 0) {
-      await productModel.upsertFromQrMenuSync(shopId, products);
+      await productModel.upsertFromQrMenuSync(shopId, products, {
+        fullSync: fullSync === true,
+      });
     }
 
     res.json({ success: true });
@@ -290,9 +303,29 @@ async function publicGuestOrder(req, res) {
     if (!tenant) {
       return res.status(404).json({ success: false, message: 'ไม่พบร้านค้า' });
     }
+
+    // ตรวจว่าทุก item มีในเมนู active ของร้าน (ต้องการ productId = UUID จาก qr_menu_products.id)
+    // PHASE_MENU_VALIDATE=true → บังคับ reject ถ้าไม่มีในเมนู (เปิดหลังแอป Flutter ส่ง productId แล้ว)
+    // PHASE_MENU_VALIDATE=false (default ตอนนี้) → log เตือนแต่ยังบันทึกได้
+    const strictValidate = process.env.PHASE_MENU_VALIDATE === 'true';
+    const check = await qrMenuProductModel.validateAndEnrichItems(sid, items);
+    if (!check.valid) {
+      if (strictValidate) {
+        return res.status(422).json({
+          success: false,
+          message: `มีสินค้าที่ไม่มีในเมนูร้านหรือปิดขายแล้ว: ${check.invalidNames.join(', ')}`,
+          code: 'MENU_ITEM_NOT_FOUND',
+          invalidItems: check.invalidNames,
+        });
+      }
+      console.warn(`[qr-order] WARN shop=${sid} table=${tableNo} items_not_in_menu=${JSON.stringify(check.invalidNames)}`);
+    }
+
+    const finalItems = check.valid ? check.items : items;
+    console.log(`[qr-order] shop=${sid} table=${tableNo} items=${Array.isArray(finalItems) ? finalItems.length : 0} strict=${strictValidate}`);
     const row = await qrVps.createPendingOrder(sid, {
       tableNo,
-      items,
+      items: finalItems,
       customerNote,
       status: 'pending',
     });

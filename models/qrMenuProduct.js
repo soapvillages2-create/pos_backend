@@ -61,7 +61,57 @@ async function upsertRow(client, row) {
   );
 }
 
+/**
+ * หา active product ด้วย id (UUID ที่ sync มาจาก POS) — ใช้ตรวจออเดอร์ก่อนบันทึก
+ * คืน row ถ้าเจอ, null ถ้าไม่มีหรือ is_active = false
+ */
+async function findActiveById(tenantId, productId) {
+  const result = await pool.query(
+    `SELECT id, name, price FROM qr_menu_products
+     WHERE tenant_id = $1 AND id = $2 AND is_active = true`,
+    [tenantId, productId]
+  );
+  return result.rows[0] ?? null;
+}
+
+/**
+ * ตรวจ items array จากลูกค้าว่าทุกรายการมีในเมนู active ของร้านหรือไม่
+ * items ต้องมี productId (UUID ที่ตรงกับ qr_menu_products.id)
+ * คืน { valid: true, items: [...enriched] } หรือ { valid: false, invalidNames: [...] }
+ */
+async function validateAndEnrichItems(tenantId, items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { valid: false, invalidNames: [] };
+  }
+  const enriched = [];
+  const invalidNames = [];
+  for (const it of items) {
+    const pid = String(it.productId ?? it.product_id ?? '').trim();
+    if (!pid) {
+      invalidNames.push(String(it.productName ?? it.name ?? '(ไม่มีชื่อ)'));
+      continue;
+    }
+    const product = await findActiveById(tenantId, pid);
+    if (!product) {
+      invalidNames.push(String(it.productName ?? it.name ?? pid));
+      continue;
+    }
+    enriched.push({
+      ...it,
+      productId: product.id,
+      productName: product.name,
+      unitPrice: parseFloat(product.price),
+    });
+  }
+  if (invalidNames.length > 0) {
+    return { valid: false, invalidNames };
+  }
+  return { valid: true, items: enriched };
+}
+
 module.exports = {
   findAllActiveByTenant,
   upsertRow,
+  findActiveById,
+  validateAndEnrichItems,
 };
