@@ -10,7 +10,10 @@ const qrController = require('../controllers/qrController');
 // พารามิเตอร์ :tenantId = shopId / รหัสร้าน (เดียวกับ JWT tenantId)
 router.get('/products/:tenantId', async (req, res) => {
   try {
-    const { tenantId } = req.params;
+    const tenantId = String(req.params.tenantId || '').trim();
+    if (!tenantId) {
+      return res.status(400).json({ success: false, message: 'กรุณาระบุรหัสร้าน' });
+    }
     const tenant = await tenantModel.getTenantByTenantId(tenantId);
     if (!tenant) {
       return res.status(404).json({

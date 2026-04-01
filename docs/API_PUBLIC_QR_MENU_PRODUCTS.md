@@ -28,3 +28,22 @@ Migration: `migrations/012_qr_menu_products.sql`
 **หลังทำครบ:** `GET /api/public/products/{tenantId}` จะอ่านจากตารางที่ **`sync-menu` เขียนลง** (`qr_menu_products`) → เมนูบนมือถือลูกค้าจะตรงกับร้านนั้น (สิ่งที่ POS ซิงค์ขึ้น) ไม่ปนกับ catalog หลักใน `products` แบบเดิม
 
 **วิธีทำแบบละเอียด (ทีละขั้น, คำสั่งครบ, ทดสอบ):** [`DEPLOY_VPS.md#runbook-012`](DEPLOY_VPS.md#runbook-012)
+
+## แก้กรณี `curl` บอกไม่พบร้าน แต่ `docker exec ... node` query เจอร้าน
+
+มักเกิดจาก **`curl` ไปที่ process บน host (พอร์ต 3001)** ไม่ใช่ **Node ใน container `loyalcloud-backend`** — สองตัวนี้อาจใช้ `.env` / DB คนละชุด
+
+**ทดสอบจากใน container (ควรตรงกับที่แอปใช้จริง):**
+
+```bash
+docker exec loyalcloud-backend wget -qO- "http://127.0.0.1:3001/api/public/products/shop568875"
+```
+
+**ตรวจว่าใครฟังพอร์ต 3001 บน host:**
+
+```bash
+ss -tlnp | grep 3001
+# หรือ: sudo lsof -i :3001
+```
+
+ถ้ามี **Node นอก Docker** ฟัง 3001 อยู่ — ปิดหรือเปลี่ยนพอร์ต แล้วให้ traffic ไปที่ container (เช่น ใน `docker-compose.yml` ใส่ `ports: - "3001:3001"` สำหรับ backend หรือให้ `curl` ไปที่ process เดียวกับที่ `docker exec` ใช้)
