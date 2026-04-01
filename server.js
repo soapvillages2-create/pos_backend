@@ -102,6 +102,9 @@ app.use('/api/public', require('./routes/public'));
 // QR Order API (VPS) — ต้องล็อกอิน POS + Bearer JWT
 app.use('/api/qr', require('./routes/qr'));
 
+// POS — แคตตาล็อกซิงค์หลายเครื่อง (Bearer JWT)
+app.use('/api/pos', require('./routes/pos'));
+
 // Initialize Database connection
 require('./config/db');
 

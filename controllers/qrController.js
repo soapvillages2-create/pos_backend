@@ -52,10 +52,11 @@ function mapPendingRow(row) {
   };
 }
 
+/** body/query shopId ต้องตรงกับ JWT claim tenantId (= tenants.tenant_id) แบบ string เทียบหลัง trim */
 function requireShopMatch(req, shopId) {
-  if (!shopId || shopId !== req.user.tenantId) {
-    return false;
-  }
+  const sid = shopId != null ? String(shopId).trim() : '';
+  const tid = req.user.tenantId != null ? String(req.user.tenantId).trim() : '';
+  if (!sid || sid !== tid) return false;
   return true;
 }
 
@@ -168,8 +169,21 @@ async function deleteTableSnapshot(req, res) {
 async function syncMenu(req, res) {
   try {
     const { shopId, storeName, webMenuLogoUrl, urlToken, urlTokenExpiry, products } = req.body || {};
+    const sid = shopId != null ? String(shopId).trim() : '';
+    if (!sid) {
+      return res.status(400).json({
+        success: false,
+        message: 'กรุณาระบุ shopId ใน body',
+        code: 'SHOP_ID_REQUIRED',
+      });
+    }
     if (!requireShopMatch(req, shopId)) {
-      return res.status(403).json({ success: false, message: 'ไม่ตรงกับร้านที่ล็อกอิน' });
+      return res.status(403).json({
+        success: false,
+        message:
+          'shopId ต้องตรงกับรหัสร้าน (tenantId) ของบัญชีที่ล็อกอิน — ตั้งค่า Shop ID ใน POS ให้ตรงกับค่า tenantId หลังล็อกอิน / ในระบบ Admin',
+        code: 'SHOP_TENANT_MISMATCH',
+      });
     }
     const tenant = await tenantModel.getTenantByTenantId(shopId);
     if (!tenant) {

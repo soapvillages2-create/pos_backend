@@ -1,11 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
-const productModel = require('../models/product');
+const qrMenuProductModel = require('../models/qrMenuProduct');
 const tenantModel = require('../models/tenant');
 const qrController = require('../controllers/qrController');
 
 // เมนูสินค้าแบบ public (สำหรับ QR Order - ไม่ต้อง Login)
+// อ่านจาก qr_menu_products (เขียนจาก POST /api/qr/sync-menu) — ไม่ใช่ catalog หลักใน `products` ทั้งก้อน
+// พารามิเตอร์ :tenantId = shopId / รหัสร้าน (เดียวกับ JWT tenantId)
 router.get('/products/:tenantId', async (req, res) => {
   try {
     const { tenantId } = req.params;
@@ -17,10 +19,7 @@ router.get('/products/:tenantId', async (req, res) => {
       });
     }
 
-    const products = await productModel.findAllByTenant(tenantId, {
-      isActive: true,
-      limit: 200,
-    });
+    const products = await qrMenuProductModel.findAllActiveByTenant(tenantId, 200);
 
     let webMenu = null;
     try {

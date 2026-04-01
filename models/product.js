@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const qrMenuProduct = require('./qrMenuProduct');
 
 async function create(tenantId, data) {
   const { name, price, description, imageUrl, category, isActive = true } = data;
@@ -9,6 +10,16 @@ async function create(tenantId, data) {
     [tenantId, name, parseFloat(price) || 0, description || null, imageUrl || null, category || null, isActive !== false]
   );
   return result.rows[0];
+}
+
+/** ดึงสินค้าทั้งหมดของ tenant สำหรับซิงค์เมนู (ไม่ paginate) */
+async function findAllForCatalog(tenantId) {
+  const result = await pool.query(
+    `SELECT * FROM products WHERE tenant_id = $1
+     ORDER BY category NULLS LAST, name ASC`,
+    [tenantId]
+  );
+  return result.rows;
 }
 
 async function findAllByTenant(tenantId, options = {}) {
@@ -99,25 +110,42 @@ async function upsertFromQrMenuSync(tenantId, products) {
         addons: p.addons,
       };
 
+      const menuExtrasJson = JSON.stringify(menuExtras);
       const existing = await client.query(
         'SELECT id FROM products WHERE tenant_id = $1 AND sync_key = $2',
         [tenantId, syncKey]
       );
+      let productId;
       if (existing.rows.length > 0) {
+        productId = existing.rows[0].id;
         await client.query(
           `UPDATE products SET
             name = $3, price = $4, image_url = COALESCE($5, image_url), category = COALESCE($6, category),
             is_active = $7, menu_extras = $8::jsonb, updated_at = CURRENT_TIMESTAMP
            WHERE tenant_id = $1 AND sync_key = $2`,
-          [tenantId, syncKey, name, price, imageUrl, category, isActive, JSON.stringify(menuExtras)]
+          [tenantId, syncKey, name, price, imageUrl, category, isActive, menuExtrasJson]
         );
       } else {
-        await client.query(
+        const ins = await client.query(
           `INSERT INTO products (tenant_id, name, price, description, image_url, category, is_active, sync_key, menu_extras)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
-          [tenantId, name, price, null, imageUrl, category, isActive, syncKey, JSON.stringify(menuExtras)]
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+           RETURNING id`,
+          [tenantId, name, price, null, imageUrl, category, isActive, syncKey, menuExtrasJson]
         );
+        productId = ins.rows[0].id;
       }
+      await qrMenuProduct.upsertRow(client, {
+        id: productId,
+        tenantId,
+        syncKey,
+        name,
+        price,
+        description: null,
+        imageUrl,
+        category,
+        isActive,
+        menuExtrasJson,
+      });
     }
     await client.query('COMMIT');
   } catch (err) {
@@ -131,6 +159,7 @@ async function upsertFromQrMenuSync(tenantId, products) {
 module.exports = {
   create,
   findAllByTenant,
+  findAllForCatalog,
   findById,
   update,
   remove,
