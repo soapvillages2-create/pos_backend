@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# ติดตั้ง proxy /api/ → PM2 ที่ 127.0.0.1:3001 (ไม่ต้องใช้ nano)
+# ติดตั้ง proxy /api/ → PM2 ที่ 127.0.0.1:3001
 # รันบน VPS: sudo bash install-api-proxy.sh
+# ถ้าหา config ไม่เจอ: sudo NGINX_CONF=/path/to/site.conf bash install-api-proxy.sh
 set -euo pipefail
 
 SNIPPET_DST="/etc/nginx/snippets/loyalcloud-api-proxy.conf"
@@ -33,17 +34,46 @@ EOF
 fi
 echo "==> Wrote $SNIPPET_DST"
 
-CONF=""
-for d in /etc/nginx/sites-enabled /etc/nginx/conf.d; do
-  if [[ -d "$d" ]]; then
+CONF="${NGINX_CONF:-}"
+
+if [[ -n "$CONF" && -f "$CONF" ]]; then
+  echo "==> ใช้ไฟล์จาก NGINX_CONF: $CONF"
+elif [[ -n "$CONF" ]]; then
+  echo "NGINX_CONF ชี้ไฟล์ที่ไม่มี: $CONF"
+  exit 1
+fi
+
+# หาไฟล์ config (หลายแบบที่พบบน VPS)
+if [[ -z "$CONF" ]]; then
+  for d in /etc/nginx/sites-enabled /etc/nginx/conf.d; do
+    [[ -d "$d" ]] || continue
     CONF=$(grep -rl "api\.loyalcloudcrm\.com" "$d" 2>/dev/null | head -1 || true)
     [[ -n "$CONF" ]] && break
-  fi
-done
+  done
+fi
 
 if [[ -z "$CONF" ]]; then
-  echo "ไม่พบ server_name api.loyalcloudcrm.com ใน /etc/nginx/sites-enabled หรือ conf.d"
-  echo "ใส่มือใน server { listen 443 } บรรทัดเดียว:"
+  CONF=$(grep -ril "loyalcloudcrm\|loyalcloud" /etc/nginx/ 2>/dev/null | grep -vE "\.bak|\.default" | head -1 || true)
+fi
+
+if [[ -z "$CONF" ]]; then
+  # ไฟล์ที่มี listen 443 (HTTPS)
+  CONF=$(grep -ril "listen.*443" /etc/nginx/sites-enabled 2>/dev/null | head -1 || true)
+fi
+
+if [[ -z "$CONF" ]]; then
+  CONF=$(grep -ril "listen.*443" /etc/nginx/conf.d 2>/dev/null | head -1 || true)
+fi
+
+if [[ -z "$CONF" ]]; then
+  echo "==> ไม่พบไฟล์ nginx ที่เหมาะสมอัตโนมัติ"
+  echo "รันคำสั่งนี้แล้วดูว่าไฟล์ไหนเป็นเว็บ API ของคุณ:"
+  echo "  sudo grep -rE 'server_name|listen.*443' /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null"
+  echo ""
+  echo "แล้วรัน (แทน PATH ด้วยไฟล์จริง):"
+  echo "  sudo NGINX_CONF=PATH bash $0"
+  echo ""
+  echo "หรือใส่มือใน server { listen 443 ... } บรรทัดเดียว:"
   echo "$INCLUDE_LINE"
   exit 1
 fi
@@ -57,9 +87,14 @@ else
   cp -a "$CONF" "$BACKUP"
   echo "==> Backup: $BACKUP"
 
-  LINE_NUM=$(grep -nE "server_name[[:space:]].*api\.loyalcloudcrm\.com" "$CONF" | head -1 | cut -d: -f1 || true)
+  # แทรกหลังบรรทัด server_name แรก (มักอยู่ใน server block ของ 443)
+  LINE_NUM=$(grep -nE "^[[:space:]]*server_name[[:space:]]" "$CONF" | head -1 | cut -d: -f1 || true)
   if [[ -z "${LINE_NUM:-}" ]]; then
-    echo "ไม่พบบรรทัด server_name ที่มี api.loyalcloudcrm.com"
+    # ไม่มี server_name — ลองหลัง listen 443
+    LINE_NUM=$(grep -nE "^[[:space:]]*listen[[:space:]]+443" "$CONF" | head -1 | cut -d: -f1 || true)
+  fi
+  if [[ -z "${LINE_NUM:-}" ]]; then
+    echo "ไม่พบ server_name หรือ listen 443 ใน $CONF — แก้มือ"
     exit 1
   fi
 
