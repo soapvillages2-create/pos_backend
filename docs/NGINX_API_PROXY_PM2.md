@@ -1,5 +1,26 @@
 # คู่มือละเอียด: ตั้งค่า Nginx ให้ส่ง `/api/` ไป Node (PM2) พอร์ต 3001
 
+## วิธีเร็ว (ไม่ต้องใช้ nano) — รันสคริปต์บน VPS
+
+```bash
+cd /root/pos_backend && git pull origin main
+sudo bash scripts/nginx/install-api-proxy.sh
+```
+
+สคริปต์จะ: สร้าง `/etc/nginx/snippets/loyalcloud-api-proxy.conf` → แทรก `include` ในไฟล์ที่มี `api.loyalcloudcrm.com` → `nginx -t` → reload
+
+ถ้าไม่มี clone repo บน VPS:
+
+```bash
+curl -fsSL -o /tmp/install-api-proxy.sh \
+  https://raw.githubusercontent.com/soapvillages2-create/pos_backend/main/scripts/nginx/install-api-proxy.sh
+sudo bash /tmp/install-api-proxy.sh
+```
+
+(สคริปต์จะสร้าง snippet ใน `/etc/nginx/snippets/` เองถ้ายังไม่มี)
+
+---
+
 ใช้เมื่อ:
 - รัน backend ด้วย **PM2** ที่ `127.0.0.1:3001`
 - โดเมน **`https://api.loyalcloudcrm.com`** ชี้มาที่ VPS นี้
