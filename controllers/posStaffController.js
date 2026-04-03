@@ -1,11 +1,21 @@
 const posStaffModel = require('../models/posStaff');
 
+/** ใช้ tenantId จาก JWT ก่อน ถ้าว่างให้ fallback เป็น shopId จาก body/query */
+function resolveTenantId(req) {
+  const fromJwt = (req.user && req.user.tenantId) ? req.user.tenantId.trim() : '';
+  if (fromJwt) return fromJwt;
+  const fromBody = (req.body && req.body.shopId) ? String(req.body.shopId).trim() : '';
+  if (fromBody) return fromBody;
+  return (req.query && req.query.shopId) ? String(req.query.shopId).trim() : '';
+}
+
 /**
  * GET /api/pos/staff — ดึง staff ทั้งหมดของร้าน (JWT required)
  */
 async function getStaff(req, res) {
   try {
-    const tenantId = req.user.tenantId;
+    const tenantId = resolveTenantId(req);
+    if (!tenantId) return res.status(400).json({ ok: false, error: 'tenantId required' });
     const staff = await posStaffModel.getAllStaff(tenantId);
     return res.status(200).json({ ok: true, staff });
   } catch (err) {
@@ -16,11 +26,12 @@ async function getStaff(req, res) {
 
 /**
  * POST /api/pos/staff/sync — sync staff list (JWT required)
- * Body: { staff: [{name, pin, role, isActive, permissionsJson}] }
+ * Body: { shopId?: string, staff: [{name, pin, role, isActive, permissionsJson}] }
  */
 async function syncStaff(req, res) {
   try {
-    const tenantId = req.user.tenantId;
+    const tenantId = resolveTenantId(req);
+    if (!tenantId) return res.status(400).json({ ok: false, error: 'tenantId required' });
     const { staff } = req.body;
     if (!Array.isArray(staff)) {
       return res.status(400).json({ ok: false, error: 'staff[] required' });
