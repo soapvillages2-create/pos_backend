@@ -1,18 +1,33 @@
 const pool = require('../config/db');
 
 async function getAllStaff(tenantId) {
-  const r = await pool.query(
-    `SELECT name, pin, role, is_active AS "isActive", permissions_json AS "permissionsJson"
-     FROM pos_staff WHERE tenant_id = $1 ORDER BY created_at`,
+  try {
+    const r = await pool.query(
+      `SELECT name, pin, role, is_active AS "isActive", permissions_json AS "permissionsJson"
+       FROM pos_staff WHERE tenant_id = $1 ORDER BY created_at`,
+      [tenantId]
+    );
+    return r.rows;
+  } catch {
+    return [];
+  }
+}
+
+/** สร้าง tenant อัตโนมัติถ้ายังไม่มี — รองรับ store ใหม่ที่ยังไม่ถูก migrate */
+async function ensureTenantExists(client, tenantId) {
+  await client.query(
+    `INSERT INTO tenants (tenant_id, name)
+     VALUES ($1, $1)
+     ON CONFLICT (tenant_id) DO NOTHING`,
     [tenantId]
   );
-  return r.rows;
 }
 
 async function syncStaff(tenantId, staffList) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await ensureTenantExists(client, tenantId);
 
     const names = staffList.map((s) => s.name);
 
